@@ -171,9 +171,7 @@ class Camera:
    def warped_perspective(self, img):
       return cv2.warpPerspective(img, self._M, (img.shape[1], img.shape[0]))
 
-   def apply_image_pipe(self, img_path, s_thresh=(185, 255), sx_thresh=(20, 100)):
-      img = mpimg.imread(img_path)
-
+   def apply_image_pipe(self, img, s_thresh=(185, 255), sx_thresh=(20, 100)):
       #
       # Undistort and apply Perspective transform
       undistort = self.undistort(img)
@@ -201,7 +199,9 @@ class Camera:
       # Note color_binary[:, :, 0] is all 0s, effectively an all black image. It might
       # be beneficial to replace this channel with something else.
       color_binary = np.dstack((np.zeros_like(sxbinary), sxbinary, s_binary))
+      binary_output = np.zeros_like(sxbinary)
+      binary_output[(s_binary == 1) | (sxbinary == 1)] = 1
 
-      plt.imshow(color_binary)
-      plt.show()
-      return color_binary
+      #plt.imshow(color_binary)
+      #plt.show()
+      return binary_output
