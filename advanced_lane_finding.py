@@ -65,13 +65,29 @@ def draw(img, undist, left_fit, right_fit):
    return result
 
 
-def process_image(image, save = 0):
+def process_image(image, filename=None, save = 0):
    line = Line()
    undist = camera.undistort(image)
+
+   if save == 1:
+       cv2.imwrite("output_images/" + filename + "_undistort" + ".jpg", undist)
+
    binary_output = camera.binary_thershold(undist)
+
+   if save == 1:
+       cv2.imwrite("output_images/" + filename + "_binary" + ".jpg", binary_output * 200)
+
    warped_img = Perspective().warp(binary_output)
+
+   if save == 1:
+       cv2.imwrite("output_images/" + filename + "_warped" + ".jpg", warped_img * 200)
+
    left_fit, right_fit = line.sliding_window_fit_plot(warped_img)
    result =  draw(warped_img, undist, left_fit, right_fit)
+
+   if save == 1:
+       cv2.imwrite("output_images/" + filename + "_final" + ".jpg", result)
+
    return result
 
 def process_video(video):
@@ -86,10 +102,6 @@ def process_video(video):
 if __name__ == "__main__":
    camera = Camera()
    camera.calibrate_camera(9, 6, "camera_cal/calibration*.jpg")
-   #img = cv2.imread("test_images/straight_lines1.jpg")
-   #plt.imshow(img)
-   #plt.show()
-   #output_img = process_image(img)
-   #plt.imshow(output_img)
-   #plt.show()
+   #img = cv2.imread("test_images/test6.jpg")
+   #output_img = process_image(img, filename="test6", save=1)
    process_video("project_video")

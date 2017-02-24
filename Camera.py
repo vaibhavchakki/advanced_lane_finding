@@ -111,13 +111,18 @@ class Camera:
 
         return scaled_sobel
 
-    def color_mask(self, img, low = [0, 0, 0], high = [255, 255, 255]):
+    def _color_mask(self, img, low = [0, 0, 0], high = [255, 255, 255]):
         mask = cv2.inRange(img, np.array(low), np.array(high))
-        return cv2.bitwise_and(img, img, mask = mask)
+        #binary = cv2.bitwise_and(img, img, mask = mask)
+        binary = np.zeros_like(img[:, :, 0])
+        binary[(mask != 0)] = 1
+        return binary
 
     def yellow_mask(self, img):
-        return self.color_mask(img, low=[0, 100, 100], high=[80, 255, 255])
+        return self._color_mask(img, low=[0, 100, 100], high=[100, 255, 255])
 
+    def white_mask(self, img):
+        return self._color_mask(img, low=[0, 0, 210], high=[255, 60, 255])
 
     def dir_threshold(self, img, thresh=(0, np.pi/2), ksize=9):
         gray = self._convertToGray(img)
@@ -148,28 +153,30 @@ class Camera:
 
 
     def binary_thershold(self, img):
-        s_thresh = (150, 255)
-        x_thresh = (40, 120)
+        #s_thresh = (150, 255)
+        x_thresh = (60, 100)
         d_thresh = (0.7, 1.2)
         m_thresh = (50, 150)
 
-        s_channel = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)[:, :, 2]
-        s_binary = np.zeros_like(s_channel)
-        s_binary[(s_channel >= s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
+        #s_channel = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)[:, :, 2]
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        #s_binary = np.zeros_like(s_channel)
+        #s_binary[(s_channel >= s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
 
-        y_color = self.yellow_mask(img)
+        yellow_lane = self.yellow_mask(hsv)
+        white_lane = self.white_mask(hsv)
 
         gray = self._convertToGray(img)
         grad_x = self.SobelOp(gray, ksize=15)
         grad_x_binary = np.zeros_like(gray)
         grad_x_binary[(grad_x >= x_thresh[0]) & (grad_x <= x_thresh[1])] = 1
 
-        dir_binary = self.dir_threshold(img, thresh=d_thresh, ksize=15)
-        mag_binary = self.mag_threshold(img, thresh=m_thresh, ksize=15)
+        #dir_binary = self.dir_threshold(img, thresh=d_thresh, ksize=15)
+        #mag_binary = self.mag_threshold(img, thresh=m_thresh, ksize=15)
 
         binary_output = np.zeros_like(gray)
-        binary_output[(s_binary == 1) |
-                      (grad_x_binary == 1) | #] = 1
-                      ((mag_binary == 1) & (dir_binary == 1))] = 1
+        binary_output[(yellow_lane == 1) | (white_lane == 1) |
+                      (grad_x_binary == 1) ] = 1
+                      #((mag_binary == 1) & (dir_binary == 1))] = 1
 
         return binary_output
