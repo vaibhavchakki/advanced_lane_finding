@@ -11,24 +11,25 @@ import matplotlib.image as mpimg
 
 class Perspective:
     def __init__(self):
-         self._src = np.float32([ [527, 500],
-                                 [759, 500],
+         self._src = np.float32([ [580, 460],
+                                 [700, 460],
                                  [260, 680],
-                                 [1044, 680] ])
+                                 [1040, 680] ])
 
-         self._dst = np.float32([ [260,  500],
-                                 [1044, 500],
-                                 [260,  680],
-                                 [1044, 680] ])
+         self._dst = np.float32([ [260, 0],
+                                 [1040, 0],
+                                 [260, 680],
+                                 [1040, 680] ])
 
-         #self._src = np.float32([[552, 480],
-         #                        [735, 480],
-         #                        [367, 612],
-         #                        [938, 612]])
-         #self._dst = np.float32([[367, 480],
-         #                        [938, 480],
-         #                        [367, 612],
-         #                        [938, 612]])
+         #self._src = np.float32( [ [270, 680],
+         #                          [1050, 680],
+         #                          [550, 480],
+         #                          [740, 480]])
+         #self._dst = np.float32( [[270, 680],
+         #                          [1050, 680],
+         #                         [270, 480],
+         #                         [1050, 480]])
+
 
          self._M = cv2.getPerspectiveTransform(self._src, self._dst)
          self._M_i = cv2.getPerspectiveTransform(self._dst, self._src)
@@ -92,42 +93,83 @@ class Camera:
 
         return
 
+    def SobelOp(self, ch, orient='x', ksize=15, scaled = 1, absolute = 1):
+        if orient == 'x':
+            sobel = cv2.Sobel(ch, cv2.CV_64F, 1, 0, ksize = ksize)
+        else:
+            sobel = cv2.Sobel(ch, cv2.CV_64F, 0, 1, ksize = ksize)
+
+        if absolute == 1:
+            abs_sobel = np.absolute(sobel)
+        else:
+            return sobel
+
+        if scaled == 1:
+            scaled_sobel = np.uint8(255 * abs_sobel / np.max(abs_sobel))
+        else:
+            return abs_sobel
+
+        return scaled_sobel
+
+    def color_mask(self, img, low = [0, 0, 0], high = [255, 255, 255]):
+        mask = cv2.inRange(img, np.array(low), np.array(high))
+        return cv2.bitwise_and(img, img, mask = mask)
+
+    def yellow_mask(self, img):
+        return self.color_mask(img, low=[0, 100, 100], high=[80, 255, 255])
+
+
+    def dir_threshold(self, img, thresh=(0, np.pi/2), ksize=9):
+        gray = self._convertToGray(img)
+
+        sobel_x = self.SobelOp(gray, scaled=0, ksize=ksize)
+        sobel_y = self.SobelOp(gray, orient='y', scaled=0, ksize=ksize)
+
+        direction = np.arctan2(sobel_y, sobel_x)
+        binary = np.zeros_like(direction)
+        binary[(direction >= thresh[0]) & (direction <= thresh[1])] = 1
+        return binary
+
+    def mag_threshold(self, img, thresh=(150, 255), ksize=9):
+        gray = self._convertToGray(img)
+        sobel_x = self.SobelOp(gray, scaled=0, absolute=0, ksize=ksize)
+        sobel_y = self.SobelOp(gray, orient='y', scaled=0, absolute=0, ksize=ksize)
+        sobel_mag = np.sqrt(np.square(sobel_x) + np.square(sobel_y))
+        sobel_scaled = np.uint8(255. * sobel_mag / np.max(sobel_mag))
+
+        binary = np.zeros_like(sobel_scaled)
+        binary[(sobel_scaled >= thresh[0]) & (sobel_scaled <= thresh[1])] = 1
+        return binary
+
     #
     # Un distort the image
     def undistort(self, img):
         return cv2.undistort(img, self._mtx, self._dist, None, self._mtx)
 
-    def binary_thershold(self, img, s_thresh=(150, 255), sx_thresh=(20, 60)):
-        #
-        # Undistort and apply Perspective transform
-        undistort = self.undistort(img)
-        warped_img = Perspective().warp(undistort)
 
-        # Convert to HSV color space and separate the V channel
-        hsv = cv2.cvtColor(warped_img, cv2.COLOR_RGB2HLS).astype(np.float32)
-        l_channel = hsv[:, :, 1]
-        s_channel = hsv[:, :, 2]
+    def binary_thershold(self, img):
+        s_thresh = (150, 255)
+        x_thresh = (40, 120)
+        d_thresh = (0.7, 1.2)
+        m_thresh = (50, 150)
 
-        # Sobel x
-        sobelx = cv2.Sobel(l_channel, cv2.CV_64F, 1, 0)  # Take the derivative in x
-        abs_sobelx = np.absolute(sobelx)  # Absolute x derivative to accentuate lines away from horizontal
-        scaled_sobel = np.uint8(255 * abs_sobelx / np.max(abs_sobelx))
-
-        # Threshold x gradient
-        sxbinary = np.zeros_like(scaled_sobel)
-        sxbinary[(scaled_sobel >= sx_thresh[0]) & (scaled_sobel <= sx_thresh[1])] = 1
-
-        # Threshold color channel
+        s_channel = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)[:, :, 2]
         s_binary = np.zeros_like(s_channel)
         s_binary[(s_channel >= s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
 
-        # Stack each channel
-        # Note color_binary[:, :, 0] is all 0s, effectively an all black image. It might
-        # be beneficial to replace this channel with something else.
-        color_binary = np.dstack((np.zeros_like(sxbinary), sxbinary, s_binary))
-        binary_output = np.zeros_like(sxbinary)
-        binary_output[(s_binary == 1) | (sxbinary == 1)] = 1
+        y_color = self.yellow_mask(img)
 
-        # plt.imshow(color_binary)
-        # plt.show()
+        gray = self._convertToGray(img)
+        grad_x = self.SobelOp(gray, ksize=15)
+        grad_x_binary = np.zeros_like(gray)
+        grad_x_binary[(grad_x >= x_thresh[0]) & (grad_x <= x_thresh[1])] = 1
+
+        dir_binary = self.dir_threshold(img, thresh=d_thresh, ksize=15)
+        mag_binary = self.mag_threshold(img, thresh=m_thresh, ksize=15)
+
+        binary_output = np.zeros_like(gray)
+        binary_output[(s_binary == 1) |
+                      (grad_x_binary == 1) | #] = 1
+                      ((mag_binary == 1) & (dir_binary == 1))] = 1
+
         return binary_output

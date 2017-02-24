@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from moviepy.editor import VideoFileClip
+
 from Camera import *
 from Line import *
 
@@ -34,15 +35,44 @@ def draw(img, undist, left_fit, right_fit):
    #plt.imshow(result)
    #plt.show()
 
+   ym_per_pix = 30 / 720  # meters per pixel in y dimension
+   xm_per_pix = 3.7 / 700  # meters per pixel in x dimension
+   y_eval = np.max(ploty)
+
+   #left_curverad, right_curverad = measure_curvature(result)
+   #left_curverad, right_curverad = 0.0, 0.0
+   # Fit new polynomials to x,y in world space
+   #left_fit_cr = np.polyfit(ploty * ym_per_pix, leftx * xm_per_pix, 2)
+   #right_fit_cr = np.polyfit(ploty * ym_per_pix, rightx * xm_per_pix, 2)
+   # Calculate the new radii of curvature
+   left_curverad = ((1 + (2 * left_fit[0] * y_eval * ym_per_pix + left_fit[1]) ** 2) ** 1.5) / np.absolute(
+       2 * left_fit[0])
+   right_curverad = ((1 + (2 * right_fit[0] * y_eval * ym_per_pix + right_fit[1]) ** 2) ** 1.5) / np.absolute(
+       2 * right_fit[0])
+   curvature = (left_curverad + right_curverad) / 2.
+
+   left_dev = img.shape[0] * left_fit[0] ** 2 + img.shape[0] * left_fit[1] + left_fit[2]
+   right_dev = img.shape[0] * right_fit[0] ** 2 + img.shape[0] * right_fit[1] + right_fit[2]
+   deviation = ((left_dev + right_dev) / 2.) - (img.shape[1] / 2.)
+   deviation = deviation * xm_per_pix
+
+   cv2.putText(result, "Left Curve: {}, Right Curve: {}".format(left_curverad.round(2), right_curverad.round(2)),
+               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, color=(255, 255, 255), thickness=2)
+
+   cv2.putText(result, "Deviation: {}m".format(deviation.round(2)),
+               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, color=(255, 255, 255), thickness=2)
+
    return result
 
 
-def process_image(image):
+def process_image(image, save = 0):
    line = Line()
-   binary_output = camera.binary_thershold(image)
    undist = camera.undistort(image)
-   left_fit, right_fit = line.sliding_window_fit_plot(binary_output)
-   return draw(binary_output, undist, left_fit, right_fit)
+   binary_output = camera.binary_thershold(undist)
+   warped_img = Perspective().warp(binary_output)
+   left_fit, right_fit = line.sliding_window_fit_plot(warped_img)
+   result =  draw(warped_img, undist, left_fit, right_fit)
+   return result
 
 def process_video(video):
    in_video  = "{}.mp4".format(video)
@@ -56,6 +86,10 @@ def process_video(video):
 if __name__ == "__main__":
    camera = Camera()
    camera.calibrate_camera(9, 6, "camera_cal/calibration*.jpg")
-   #img = mpimg.imread("test_images/test6.jpg")
-   #img = process_image(img)
+   #img = cv2.imread("test_images/straight_lines1.jpg")
+   #plt.imshow(img)
+   #plt.show()
+   #output_img = process_image(img)
+   #plt.imshow(output_img)
+   #plt.show()
    process_video("project_video")
